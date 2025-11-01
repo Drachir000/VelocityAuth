@@ -14,15 +14,23 @@ import java.nio.file.Path;
 @Getter
 public class VelocityAuthPlugin {
 	
+	@Getter
+	private static VelocityAuthPlugin instance = null;
+	
 	private final ProxyServer server;
 	private final Logger logger;
 	private final Path pluginDirectory;
 	
 	@Inject
 	public VelocityAuthPlugin(ProxyServer server, Logger logger, @DataDirectory Path pluginDirectory) {
+		
+		if (instance != null) throw new IllegalStateException("Already initialized!");
+		instance = this;
+		
 		this.server = server;
 		this.logger = logger;
 		this.pluginDirectory = pluginDirectory;
+		
 	}
 	
 	@Subscribe
