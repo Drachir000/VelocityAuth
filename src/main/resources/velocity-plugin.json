@@ -1,0 +1,11 @@
+{
+	"id": "${artifactId}",
+	"name": "${name}",
+	"version": "${version}",
+	"description": "${description}",
+	"url": "${url}",
+	"authors": [
+		"${author}"
+	],
+	"main": "${main.class}"
+}
