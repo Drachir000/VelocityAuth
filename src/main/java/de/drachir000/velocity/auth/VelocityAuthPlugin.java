@@ -65,7 +65,7 @@ public class VelocityAuthPlugin {
 		int pluginId = -1;
 		
 		try (
-				InputStream inputStream = this.getClass().getResourceAsStream("bstats.json");
+				InputStream inputStream = this.getClass().getResourceAsStream("/bstats.json");
 				Scanner scanner = new Scanner(inputStream).useDelimiter("\\A")
 		) {
 			
