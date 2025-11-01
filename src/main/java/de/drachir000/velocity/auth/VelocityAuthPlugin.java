@@ -9,13 +9,14 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import lombok.AccessLevel;
 import lombok.Getter;
 import org.bstats.velocity.Metrics;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.Scanner;
 
 @Getter
 public class VelocityAuthPlugin {
@@ -74,10 +75,9 @@ public class VelocityAuthPlugin {
 		
 		try (
 				InputStream inputStream = this.getClass().getResourceAsStream("/bstats.json");
-				Scanner scanner = new Scanner(inputStream).useDelimiter("\\A")
 		) {
 			
-			String jsonString = scanner.hasNext() ? scanner.next() : "{}";
+			String jsonString = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
 			JSONObject json = new JSONObject(jsonString);
 			
 			if (!json.has("plugin-id")) {
@@ -90,7 +90,7 @@ public class VelocityAuthPlugin {
 				throw new IllegalArgumentException("bstats.json has an invalid 'plugin-id' field!");
 			}
 			
-		} catch (IOException | NullPointerException | IllegalArgumentException | SecurityException e) {
+		} catch (IOException | NullPointerException | IllegalArgumentException | JSONException | SecurityException e) {
 			logger.warn("Failed to register bStats metrics: Failed to load bStats plugin Id!", e);
 			return null;
 		}
