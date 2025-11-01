@@ -20,6 +20,9 @@ import java.util.Scanner;
 @Getter
 public class VelocityAuthPlugin {
 	
+	@Getter
+	private static VelocityAuthPlugin instance = null;
+	
 	private final ProxyServer server;
 	private final Logger logger;
 	private final Path pluginDirectory;
@@ -31,10 +34,15 @@ public class VelocityAuthPlugin {
 	
 	@Inject
 	public VelocityAuthPlugin(ProxyServer server, Logger logger, @DataDirectory Path pluginDirectory, Metrics.Factory metricsFactory) {
+		
+		if (instance != null) throw new IllegalStateException("Already initialized!");
+		instance = this;
+		
 		this.server = server;
 		this.logger = logger;
 		this.pluginDirectory = pluginDirectory;
-		this.metricsFactory = metricsFactory;
+ 		this.metricsFactory = metricsFactory;
+		
 	}
 	
 	@Subscribe
