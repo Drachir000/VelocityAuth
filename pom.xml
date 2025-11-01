@@ -41,6 +41,8 @@
 		<version>${project.version}</version>
 		<author>Drachir000</author>
 		
+		<bstats.pluginId>27814</bstats.pluginId>
+		
 		<main.class>de.drachir000.velocity.auth.VelocityAuthPlugin</main.class>
 		<lib.package>de.drachir000.velocity.auth.lib</lib.package>
 		
