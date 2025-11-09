@@ -1,0 +1,27 @@
+# ----------------------------------------------------------------
+# Database Configuration for VelocityAuth
+# ----------------------------------------------------------------
+
+# The type of database to use.
+# Valid options: "mysql", "postgresql", "sqlite"
+driver: "sqlite"
+
+# --- Table Names ---
+# Define the names for the tables the plugin will use.
+# It is recommended to leave these as default.
+tables:
+    accounts: "velocityauth_accounts"
+    verifications: "velocityauth_verifications"
+
+# --- Remote Database Settings (for MySQL/PostgreSQL) ---
+address: "127.0.0.1:3306"
+database: "velocity_auth"
+username: "root"
+password: "password"
+# Extra properties for the JDBC driver, e.g., "?autoReconnect=true&useSSL=false"
+properties: ""
+
+# --- Local Database Settings (for SQLite) ---
+# The file path for the SQLite database.
+# This path is relative to this plugin's data folder.
+sqlite_file: "velocityauth.db"
