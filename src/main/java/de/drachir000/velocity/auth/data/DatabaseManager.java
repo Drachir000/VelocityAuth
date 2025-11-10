@@ -21,6 +21,8 @@ import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -32,6 +34,8 @@ public class DatabaseManager {
 	private final Path configPath;
 	private DatabaseConfig config;
 	private ConnectionSource connectionSource;
+	
+	private final ExecutorService dbExecutor = Executors.newFixedThreadPool(4);
 	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
@@ -182,14 +186,14 @@ public class DatabaseManager {
 	 * Creates tables if they don't exist and initializes the DAOs.
 	 * This method dynamically sets the table names from the config.
 	 */
-	private void setupTables() throws SQLException {
+	private void setupTables() throws SQLException, IllegalArgumentException {
 		
 		// --- PlayerAccount Table ---
 		// 1. Create a config for the table
 		DatabaseTableConfig<PlayerAccount> accountTableConfig = DatabaseTableConfig.fromClass(connectionSource.getDatabaseType(), PlayerAccount.class);
 		
 		// 2. Set the table name from our YAML config
-		accountTableConfig.setTableName(config.getTableName("accounts"));
+		accountTableConfig.setTableName(validateTableName(config.getTableName("accounts")));
 		
 		// 3. Create the table if it doesn't exist
 		try {
@@ -207,9 +211,25 @@ public class DatabaseManager {
 	}
 	
 	/**
+	 * Validates a table name to ensure it only contains alphanumeric characters or underscores.
+	 * Throws {@link IllegalArgumentException} if the table name is invalid.
+	 *
+	 * @param tableName The table name to validate.
+	 * @return The validated table name if it is valid.
+	 * @throws IllegalArgumentException if the table name contains invalid characters.
+	 */
+	private String validateTableName(String tableName) throws IllegalArgumentException {
+		if (!tableName.matches("^[a-zA-Z0-9_]+$")) {
+			throw new IllegalArgumentException("Invalid table name: " + tableName);
+		}
+		return tableName;
+	}
+	
+	/**
 	 * Closes the database connection source.
 	 */
 	public void close() {
+		
 		if (this.connectionSource != null) {
 			try {
 				this.connectionSource.close();
@@ -217,6 +237,9 @@ public class DatabaseManager {
 				plugin.getLogger().error("Failed to close database connection:", e);
 			}
 		}
+		
+		dbExecutor.close();
+		
 	}
 	
 	// --- Public Data Access Methods ---
@@ -236,7 +259,7 @@ public class DatabaseManager {
 				plugin.getLogger().error("Failed to query account by UUID:", e);
 				return null;
 			}
-		});
+		}, dbExecutor);
 	}
 	
 	/**
@@ -249,13 +272,12 @@ public class DatabaseManager {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE mcName = ?"
-				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
 				return accountDao.queryBuilder().where().eq(ACCOUNTS_MC_NAME, mcName).queryForFirst();
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Minecraft Name:", e);
 				return null;
 			}
-		});
+		}, dbExecutor);
 	}
 	
 	/**
@@ -264,7 +286,7 @@ public class DatabaseManager {
 	 * @param discordId The user's Discord ID.
 	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
 	 */
-	public CompletableFuture<PlayerAccount> findAccountByDiscordId(long discordId) {
+	public CompletableFuture<PlayerAccount> findAccountByDiscordId(@Nonnull String discordId) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE discordId = ?"
@@ -273,7 +295,7 @@ public class DatabaseManager {
 				plugin.getLogger().error("Failed to query account by Discord ID:", e);
 				return null;
 			}
-		});
+		}, dbExecutor);
 	}
 	
 	/**
@@ -286,13 +308,12 @@ public class DatabaseManager {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE email = ?"
-				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
 				return accountDao.queryBuilder().where().eq(ACCOUNTS_EMAIL, email).queryForFirst();
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by email:", e);
 				return null;
 			}
-		});
+		}, dbExecutor);
 	}
 	
 	/**
@@ -308,7 +329,7 @@ public class DatabaseManager {
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to save account:", e);
 			}
-		});
+		}, dbExecutor);
 	}
 	
 }

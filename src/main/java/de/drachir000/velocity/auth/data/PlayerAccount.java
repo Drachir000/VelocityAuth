@@ -3,8 +3,10 @@ package de.drachir000.velocity.auth.data;
 import com.j256.ormlite.field.DataType;
 import com.j256.ormlite.field.DatabaseField;
 import com.j256.ormlite.table.DatabaseTable;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
 
 import javax.annotation.Nonnull;
 import java.util.Date;
@@ -12,6 +14,8 @@ import java.util.UUID;
 
 @Getter
 @Setter
+@ToString
+@EqualsAndHashCode(of = {"uuid", "mcName", "discordId", "email"})
 @DatabaseTable(tableName = "velocityauth_accounts") // Default name overwritten with config value by DatabaseManager
 public class PlayerAccount {
 	
@@ -32,7 +36,7 @@ public class PlayerAccount {
 	 * Indexed for fast lookups.
 	 */
 	@DatabaseField(index = true, canBeNull = false, unique = true)
-	private long discordId;
+	private String discordId;
 	
 	/**
 	 * The player's unique email address.
@@ -69,7 +73,7 @@ public class PlayerAccount {
 	/**
 	 * Convenience constructor for creating a new player.
 	 */
-	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, long discordId, @Nonnull String email) {
+	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, @Nonnull String discordId, @Nonnull String email) {
 		this.uuid = uuid;
 		this.mcName = mcName;
 		this.discordId = discordId;
@@ -82,7 +86,7 @@ public class PlayerAccount {
 	/**
 	 * Full constructor for creating a player.
 	 */
-	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, long discordId, @Nonnull String email, @Nonnull Date dateAccepted, @Nonnull Date lastOnline, @Nonnull Date bannedUntil) {
+	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, @Nonnull String discordId, @Nonnull String email, @Nonnull Date dateAccepted, @Nonnull Date lastOnline, @Nonnull Date bannedUntil) {
 		this.uuid = uuid;
 		this.mcName = mcName;
 		this.discordId = discordId;

@@ -2,6 +2,10 @@
 # Database Configuration for VelocityAuth
 # ----------------------------------------------------------------
 
+# Warning: This file contains sensitive information.
+# Please make sure to protect it accordingly.
+# For Linux: Consider using "chmod 600 database.yml"
+
 # The type of database to use.
 # Valid options: "mysql", "postgresql", "sqlite"
 driver: "sqlite"
