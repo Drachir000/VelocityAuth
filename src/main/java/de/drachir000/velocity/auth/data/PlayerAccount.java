@@ -12,7 +12,7 @@ import java.util.UUID;
 
 @Getter
 @Setter
-@DatabaseTable(tableName = "velocityauth_accounts") // Default name TODO overwrite with config value
+@DatabaseTable(tableName = "velocityauth_accounts") // Default name overwritten with config value by DatabaseManager
 public class PlayerAccount {
 	
 	/**
