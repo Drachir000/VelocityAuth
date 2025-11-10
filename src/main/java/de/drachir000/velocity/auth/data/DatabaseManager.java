@@ -19,6 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -194,6 +195,98 @@ public class DatabaseManager {
 				plugin.getLogger().error("Failed to close database connection:", e);
 			}
 		}
+	}
+	
+	// --- Public Data Access Methods ---
+	// All database calls should be ASYNCHRONOUS to not lag the proxy.
+	
+	/**
+	 * Fetches a player account by their UUID.
+	 *
+	 * @param uuid The player's UUID.
+	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
+	 */
+	public CompletableFuture<PlayerAccount> getAccount(UUID uuid) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				return accountDao.queryForId(uuid);
+			} catch (SQLException e) {
+				plugin.getLogger().error("Failed to query account by UUID:", e);
+				return null;
+			}
+		});
+	}
+	
+	/**
+	 * Fetches a player account by their Minecraft Name.
+	 *
+	 * @param mcName The user's Minecraft Name (case-sensitive).
+	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
+	 */
+	public CompletableFuture<PlayerAccount> findAccountByMcName(String mcName) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				// OrmLite query builder for "WHERE mcName = ?"
+				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
+				return accountDao.queryBuilder().where().eq("mcName", mcName).queryForFirst();
+			} catch (SQLException e) {
+				plugin.getLogger().error("Failed to query account by Minecraft Name:", e);
+				return null;
+			}
+		});
+	}
+	
+	/**
+	 * Fetches a player account by their Discord ID.
+	 *
+	 * @param discordId The user's Discord ID.
+	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
+	 */
+	public CompletableFuture<PlayerAccount> findAccountByDiscordId(long discordId) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				// OrmLite query builder for "WHERE discordId = ?"
+				return accountDao.queryBuilder().where().eq("discordId", discordId).queryForFirst();
+			} catch (SQLException e) {
+				plugin.getLogger().error("Failed to query account by Discord ID:", e);
+				return null;
+			}
+		});
+	}
+	
+	/**
+	 * Fetches a player account by their Email Address.
+	 *
+	 * @param email The user's email (case-sensitive).
+	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
+	 */
+	public CompletableFuture<PlayerAccount> findAccountByEmail(String email) {
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				// OrmLite query builder for "WHERE email = ?"
+				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
+				return accountDao.queryBuilder().where().eq("email", email).queryForFirst();
+			} catch (SQLException e) {
+				plugin.getLogger().error("Failed to query account by email:", e);
+				return null;
+			}
+		});
+	}
+	
+	/**
+	 * Saves (creates or updates) a player account in the database.
+	 *
+	 * @param account The account to save.
+	 * @return A {@link CompletableFuture} that completes when the operation is done.
+	 */
+	public CompletableFuture<Void> saveAccount(PlayerAccount account) {
+		return CompletableFuture.runAsync(() -> {
+			try {
+				accountDao.createOrUpdate(account);
+			} catch (SQLException e) {
+				plugin.getLogger().error("Failed to save account:", e);
+			}
+		});
 	}
 	
 }
