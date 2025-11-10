@@ -49,7 +49,7 @@ public class VelocityAuthPlugin {
 	}
 	
 	@Subscribe
-	public void onProxyInitialization(ProxyInitializeEvent event) throws Exception {
+	public void onProxyInitialization(ProxyInitializeEvent event) {
 		
 		logger.info("Initializing VelocityAuth...");
 		
@@ -63,7 +63,7 @@ public class VelocityAuthPlugin {
 			
 		} catch (Exception e) {
 			logger.error("Failed to connect to database!", e);
-			throw e;
+			return;
 		}
 		
 		logger.info("Registering bStats metrics...");

@@ -12,6 +12,7 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 
+import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -35,6 +36,15 @@ public class DatabaseManager {
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
 	
+	// Column names
+	private static final String ACCOUNTS_UUID = "uuid";
+	private static final String ACCOUNTS_MC_NAME = "mcName";
+	private static final String ACCOUNTS_DISCORD_ID = "discordId";
+	private static final String ACCOUNTS_EMAIL = "email";
+	private static final String ACCOUNTS_DATE_ACCEPTED = "dateAccepted";
+	private static final String ACCOUNTS_LAST_ONLINE = "lastOnline";
+	private static final String ACCOUNTS_BANNED_UNTIL = "bannedUntil";
+	
 	public DatabaseManager(VelocityAuthPlugin plugin) {
 		this.plugin = plugin;
 		this.configPath = plugin.getPluginDirectory().resolve("database.yml");
@@ -52,6 +62,10 @@ public class DatabaseManager {
 		this.connectionSource = buildConnectionSource();
 		
 		setupTables();
+		
+		if (this.connectionSource == null || this.accountDao == null) {
+			throw new NullPointerException("Failed to initialize database connection!");
+		}
 		
 	}
 	
@@ -112,7 +126,9 @@ public class DatabaseManager {
 				
 				try {
 					Class.forName("com.mysql.cj.jdbc.Driver");
-				} catch (ClassNotFoundException handled) { /* handled by shade */ }
+				} catch (ClassNotFoundException handled) {
+					plugin.getLogger().warn("Failed to load MySQL driver class.");
+				}
 				
 				jdbcUrl = String.format("jdbc:mysql://%s/%s%s",
 						config.getAddress(),
@@ -125,7 +141,9 @@ public class DatabaseManager {
 				
 				try {
 					Class.forName("org.postgresql.Driver");
-				} catch (ClassNotFoundException handled) { /* handled by shade */ }
+				} catch (ClassNotFoundException handled) {
+					plugin.getLogger().warn("Failed to load PostgreSQL driver class.");
+				}
 				
 				jdbcUrl = String.format("jdbc:postgresql://%s/%s%s",
 						config.getAddress(),
@@ -138,7 +156,9 @@ public class DatabaseManager {
 				
 				try {
 					Class.forName("org.sqlite.JDBC");
-				} catch (ClassNotFoundException handled) { /* handled by shade */ }
+				} catch (ClassNotFoundException handled) {
+					plugin.getLogger().warn("Failed to load SQLite driver class.");
+				}
 				
 				// Resolve the SQLite file path relative to the data directory
 				Path sqlitePath = plugin.getPluginDirectory().resolve(config.getSqlite_file());
@@ -176,6 +196,8 @@ public class DatabaseManager {
 			TableUtils.createTableIfNotExists(connectionSource, accountTableConfig);
 		} catch (SQLException e) {
 			// MySQL will throw an exception for creating the indices if the table already exists
+			if (config.getDriver().equalsIgnoreCase("mysql") && !e.getMessage().startsWith("SQL statement failed: CREATE INDEX"))
+				throw e;
 			plugin.getLogger().warn("SQLException while setting up Tables: {}. Continuing anyways...", e.getMessage());
 		}
 		
@@ -206,7 +228,7 @@ public class DatabaseManager {
 	 * @param uuid The player's UUID.
 	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
 	 */
-	public CompletableFuture<PlayerAccount> getAccount(UUID uuid) {
+	public CompletableFuture<PlayerAccount> getAccount(@Nonnull UUID uuid) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				return accountDao.queryForId(uuid);
@@ -223,12 +245,12 @@ public class DatabaseManager {
 	 * @param mcName The user's Minecraft Name (case-sensitive).
 	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
 	 */
-	public CompletableFuture<PlayerAccount> findAccountByMcName(String mcName) {
+	public CompletableFuture<PlayerAccount> findAccountByMcName(@Nonnull String mcName) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE mcName = ?"
 				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
-				return accountDao.queryBuilder().where().eq("mcName", mcName).queryForFirst();
+				return accountDao.queryBuilder().where().eq(ACCOUNTS_MC_NAME, mcName).queryForFirst();
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Minecraft Name:", e);
 				return null;
@@ -246,7 +268,7 @@ public class DatabaseManager {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE discordId = ?"
-				return accountDao.queryBuilder().where().eq("discordId", discordId).queryForFirst();
+				return accountDao.queryBuilder().where().eq(ACCOUNTS_DISCORD_ID, discordId).queryForFirst();
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Discord ID:", e);
 				return null;
@@ -260,12 +282,12 @@ public class DatabaseManager {
 	 * @param email The user's email (case-sensitive).
 	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
 	 */
-	public CompletableFuture<PlayerAccount> findAccountByEmail(String email) {
+	public CompletableFuture<PlayerAccount> findAccountByEmail(@Nonnull String email) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				// OrmLite query builder for "WHERE email = ?"
 				// 'eq' (equals) is case-sensitive. 'like' is for case-insensitive.
-				return accountDao.queryBuilder().where().eq("email", email).queryForFirst();
+				return accountDao.queryBuilder().where().eq(ACCOUNTS_EMAIL, email).queryForFirst();
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by email:", e);
 				return null;
@@ -279,7 +301,7 @@ public class DatabaseManager {
 	 * @param account The account to save.
 	 * @return A {@link CompletableFuture} that completes when the operation is done.
 	 */
-	public CompletableFuture<Void> saveAccount(PlayerAccount account) {
+	public CompletableFuture<Void> saveAccount(@Nonnull PlayerAccount account) {
 		return CompletableFuture.runAsync(() -> {
 			try {
 				accountDao.createOrUpdate(account);

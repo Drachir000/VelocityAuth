@@ -76,8 +76,7 @@ public class PlayerAccount {
 		this.email = email;
 		this.dateAccepted = new Date();
 		this.lastOnline = new Date();
-		this.bannedUntil = new Date();
-		bannedUntil.setTime(0);
+		this.bannedUntil = new Date(0);
 	}
 	
 	/**
