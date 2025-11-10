@@ -243,21 +243,6 @@
 						</relocation>
 						
 						<relocation>
-							<pattern>com.mysql</pattern>
-							<shadedPattern>${lib.package}.mysql</shadedPattern>
-						</relocation>
-						
-						<relocation>
-							<pattern>org.postgresql</pattern>
-							<shadedPattern>${lib.package}.postgresql</shadedPattern>
-						</relocation>
-						
-						<relocation>
-							<pattern>org.sqlite</pattern>
-							<shadedPattern>${lib.package}.sqlite</shadedPattern>
-						</relocation>
-						
-						<relocation>
 							<pattern>lombok</pattern>
 							<shadedPattern>${lib.package}.lombok</shadedPattern>
 						</relocation>
