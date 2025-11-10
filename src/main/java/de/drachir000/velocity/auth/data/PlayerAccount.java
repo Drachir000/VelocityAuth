@@ -22,10 +22,16 @@ public class PlayerAccount {
 	private UUID uuid;
 	
 	/**
+	 * The player's unique Minecraft UUID. This is the Primary Key.
+	 */
+	@DatabaseField(index = true, canBeNull = false, unique = true)
+	private String mcName;
+	
+	/**
 	 * The player's unique Discord User ID.
 	 * Indexed for fast lookups.
 	 */
-	@DatabaseField(index = true, unique = true)
+	@DatabaseField(index = true, canBeNull = false, unique = true)
 	private long discordId;
 	
 	/**
@@ -51,8 +57,8 @@ public class PlayerAccount {
 	 * Timestamp (in millis) of when the player's ban expires.
 	 * 0 by default, meaning not banned.
 	 */
-	@DatabaseField(defaultValue = "0")
-	private long bannedUntil;
+	@DatabaseField(canBeNull = false, dataType = DataType.DATE_LONG)
+	private Date bannedUntil;
 	
 	/**
 	 * No-argument constructor required by OrmLite.
@@ -63,20 +69,23 @@ public class PlayerAccount {
 	/**
 	 * Convenience constructor for creating a new player.
 	 */
-	public PlayerAccount(@Nonnull UUID uuid, long discordId, @Nonnull String email) {
+	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, long discordId, @Nonnull String email) {
 		this.uuid = uuid;
+		this.mcName = mcName;
 		this.discordId = discordId;
 		this.email = email;
 		this.dateAccepted = new Date();
 		this.lastOnline = new Date();
-		this.bannedUntil = 0;
+		this.bannedUntil = new Date();
+		bannedUntil.setTime(0);
 	}
 	
 	/**
 	 * Full constructor for creating a player.
 	 */
-	public PlayerAccount(@Nonnull UUID uuid, long discordId, @Nonnull String email, @Nonnull Date dateAccepted, @Nonnull Date lastOnline, long bannedUntil) {
+	public PlayerAccount(@Nonnull UUID uuid, @Nonnull String mcName, long discordId, @Nonnull String email, @Nonnull Date dateAccepted, @Nonnull Date lastOnline, @Nonnull Date bannedUntil) {
 		this.uuid = uuid;
+		this.mcName = mcName;
 		this.discordId = discordId;
 		this.email = email;
 		this.dateAccepted = dateAccepted;
