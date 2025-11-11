@@ -24,9 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -40,7 +38,14 @@ public class DatabaseManager {
 	private ConnectionSource connectionSource;
 	private HikariDataSource hikariDataSource;
 	
-	private final ExecutorService dbExecutor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build());
+	private final ExecutorService dbExecutor = new ThreadPoolExecutor(
+			4, // core pool size
+			Math.max(4, Runtime.getRuntime().availableProcessors() * 2), // maximum pool size
+			60L, TimeUnit.SECONDS, // keep-alive time
+			new LinkedBlockingQueue<>(100), // bounded queue
+			new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build(),
+			new ThreadPoolExecutor.CallerRunsPolicy() // backpressure policy
+	);
 	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
