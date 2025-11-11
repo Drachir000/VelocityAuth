@@ -562,12 +562,27 @@ public class DatabaseManager {
 				// OrmLite query builder for "WHERE mcName = ?"
 				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_MC_NAME, mcName).queryForFirst();
 				
-				if (accountCache.containsKey(account.getUuid())) {
-					return getAccountFromCache(account.getUuid());
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getMcName().equalsIgnoreCase(mcName)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
 				}
 				
-				addAccountToCache(account.getUuid(), account);
-				return account;
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
 				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Minecraft Name:", e);
@@ -589,12 +604,27 @@ public class DatabaseManager {
 				// OrmLite query builder for "WHERE discordId = ?"
 				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_DISCORD_ID, discordId).queryForFirst();
 				
-				if (accountCache.containsKey(account.getUuid())) {
-					return getAccountFromCache(account.getUuid());
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getDiscordId().equalsIgnoreCase(discordId)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
 				}
 				
-				addAccountToCache(account.getUuid(), account);
-				return account;
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
 				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Discord ID:", e);
@@ -616,12 +646,28 @@ public class DatabaseManager {
 				// OrmLite query builder for "WHERE email = ?"
 				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_EMAIL, email).queryForFirst();
 				
-				if (accountCache.containsKey(account.getUuid())) {
-					return getAccountFromCache(account.getUuid());
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getEmail().equalsIgnoreCase(email)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
 				}
 				
-				addAccountToCache(account.getUuid(), account);
-				return account;
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
+				
 				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by email:", e);
