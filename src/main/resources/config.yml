@@ -1,0 +1,10 @@
+# A list of public servers that can be joined by all players.
+public_servers:
+    - '(?i)lobby(-\d+)?'
+    - '(?i)hub(-\d+)?'
+    - "auth"
+
+# The server to redirect unverified players to
+# This server MUST also be in the 'public_servers' list!
+# Set this to null to disable this feature.
+auth_server: "auth"

@@ -6,6 +6,7 @@ import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import de.drachir000.velocity.auth.config.MainConfig;
 import de.drachir000.velocity.auth.data.DatabaseManager;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -33,6 +34,7 @@ public class VelocityAuthPlugin {
 	private final Metrics.Factory metricsFactory;
 	
 	private Metrics metrics;
+	private MainConfig mainConfig;
 	private DatabaseManager databaseManager;
 	
 	@Inject
@@ -52,6 +54,20 @@ public class VelocityAuthPlugin {
 	public void onProxyInitialization(ProxyInitializeEvent event) {
 		
 		logger.info("Initializing VelocityAuth...");
+		
+		logger.info("Loading main configuration...");
+		try {
+			mainConfig = MainConfig.getInstance();
+			if (mainConfig == null) throw new NullPointerException("MainConfig is null!");
+		} catch (IOException | NullPointerException e) {
+			logger.error("Failed to load main configuration!", e);
+			throw new RuntimeException("Failed to load main configuration!", e);
+		}
+		
+		if (mainConfig.getAuth_server() != null && !mainConfig.isServerPublic(mainConfig.getAuth_server())) {
+			mainConfig.setAuth_server(null);
+			logger.warn("auth_server is not public! Continuing without auth_server...");
+		}
 		
 		logger.info("Connecting to database...");
 		try {

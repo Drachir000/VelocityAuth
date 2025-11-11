@@ -109,7 +109,7 @@ public class DatabaseManager {
 			
 			plugin.getLogger().info("Creating default database.yml...");
 			
-			configPath.getParent().toFile().mkdirs();
+			Files.createDirectories(configPath.getParent());
 			
 			try (InputStream in = getClass().getResourceAsStream("/database.yml");
 			     OutputStream out = Files.newOutputStream(configPath)) {
@@ -118,7 +118,6 @@ public class DatabaseManager {
 					throw new IOException("Could not find default database.yml in JAR!");
 				}
 				
-				Files.createDirectories(configPath.getParent());
 				in.transferTo(out);
 				
 			}
