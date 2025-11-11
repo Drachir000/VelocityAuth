@@ -29,6 +29,9 @@ public class DatabaseConfig {
 	@Getter
 	private String sqlite_file;
 	
+	@Getter
+	private PoolConfig pool;
+	
 	/**
 	 * Retrieves the mapped table name for the given key from the tables map.
 	 * If no mapping is found, the method returns the key itself.
@@ -48,6 +51,20 @@ public class DatabaseConfig {
 	 */
 	public String getProperties() {
 		return properties != null ? properties : "";
+	}
+	
+	/**
+	 * Nested configuration class for HikariCP connection pool settings.
+	 */
+	@Getter
+	@Setter
+	@SuppressWarnings("unused") // Fields are populated by SnakeYAML
+	public static class PoolConfig {
+		private int maximum_pool_size;
+		private int minimum_idle;
+		private long max_lifetime;
+		private long connection_timeout;
+		private long idle_timeout;
 	}
 	
 }

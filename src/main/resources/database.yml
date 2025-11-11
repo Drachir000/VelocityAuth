@@ -25,6 +25,24 @@ password: "password"
 # Extra properties for the JDBC driver, e.g., "?autoReconnect=true&useSSL=false"
 properties: ""
 
+# --- Connection Pool Settings ---
+# HikariCP connection pool configuration
+# These settings only apply to MySQL and PostgreSQL (not SQLite)
+pool:
+    # Maximum number of connections in the pool
+    maximum_pool_size: 10
+    # Minimum number of idle connections to maintain
+    minimum_idle: 5
+    # Maximum lifetime of a connection in the pool (in milliseconds)
+    # 30 minutes default
+    max_lifetime: 1800000
+    # Connection timeout (in milliseconds)
+    # 30 seconds default
+    connection_timeout: 30000
+    # Idle timeout (in milliseconds)
+    # 10 minutes default
+    idle_timeout: 600000
+
 # --- Local Database Settings (for SQLite) ---
 # The file path for the SQLite database.
 # This path is relative to this plugin's data folder.

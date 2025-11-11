@@ -2,10 +2,13 @@ package de.drachir000.velocity.auth.data;
 
 import com.j256.ormlite.dao.Dao;
 import com.j256.ormlite.dao.DaoManager;
+import com.j256.ormlite.jdbc.DataSourceConnectionSource;
 import com.j256.ormlite.jdbc.JdbcConnectionSource;
 import com.j256.ormlite.support.ConnectionSource;
 import com.j256.ormlite.table.DatabaseTableConfig;
 import com.j256.ormlite.table.TableUtils;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import de.drachir000.velocity.auth.VelocityAuthPlugin;
 import de.drachir000.velocity.auth.config.DatabaseConfig;
 import org.yaml.snakeyaml.LoaderOptions;
@@ -34,6 +37,7 @@ public class DatabaseManager {
 	private final Path configPath;
 	private DatabaseConfig config;
 	private ConnectionSource connectionSource;
+	private HikariDataSource hikariDataSource;
 	
 	private final ExecutorService dbExecutor = Executors.newFixedThreadPool(4);
 	
@@ -120,64 +124,102 @@ public class DatabaseManager {
 	 */
 	private ConnectionSource buildConnectionSource() throws SQLException {
 		
-		String jdbcUrl;
 		String driver = config.getDriver().toLowerCase();
 		
-		// Load driver class
-		switch (driver) {
-			
-			case "mysql" -> {
-				
-				try {
-					Class.forName("com.mysql.cj.jdbc.Driver");
-				} catch (ClassNotFoundException handled) {
-					plugin.getLogger().warn("Failed to load MySQL driver class.");
-				}
-				
-				jdbcUrl = String.format("jdbc:mysql://%s/%s%s",
-						config.getAddress(),
-						config.getDatabase(),
-						config.getProperties());
-				
-			}
-			
-			case "postgresql" -> {
-				
-				try {
-					Class.forName("org.postgresql.Driver");
-				} catch (ClassNotFoundException handled) {
-					plugin.getLogger().warn("Failed to load PostgreSQL driver class.");
-				}
-				
-				jdbcUrl = String.format("jdbc:postgresql://%s/%s%s",
-						config.getAddress(),
-						config.getDatabase(),
-						config.getProperties());
-				
-			}
-			
-			case "sqlite" -> {
-				
-				try {
-					Class.forName("org.sqlite.JDBC");
-				} catch (ClassNotFoundException handled) {
-					plugin.getLogger().warn("Failed to load SQLite driver class.");
-				}
-				
-				// Resolve the SQLite file path relative to the data directory
-				Path sqlitePath = plugin.getPluginDirectory().resolve(config.getSqlite_file());
-				jdbcUrl = "jdbc:sqlite:" + sqlitePath.toAbsolutePath();
-				
-			}
-			
-			default -> throw new SQLException("Invalid database driver specified: " + driver);
-			
-		}
-		
 		if (driver.equals("sqlite")) {
+			
+			try {
+				Class.forName("org.sqlite.JDBC");
+			} catch (ClassNotFoundException handled) {
+				plugin.getLogger().warn("Failed to load SQLite driver class.");
+			}
+			
+			// Resolve the SQLite file path relative to the data directory
+			Path sqlitePath = plugin.getPluginDirectory().resolve(config.getSqlite_file());
+			String jdbcUrl = "jdbc:sqlite:" + sqlitePath.toAbsolutePath();
+			
 			return new JdbcConnectionSource(jdbcUrl);
+			
 		} else {
-			return new JdbcConnectionSource(jdbcUrl, config.getUsername(), config.getPassword());
+			
+			HikariConfig hikariConfig = new HikariConfig();
+			
+			switch (driver) {
+				
+				case "mysql" -> {
+					
+					try {
+						Class.forName("com.mysql.cj.jdbc.Driver");
+					} catch (ClassNotFoundException handled) {
+						plugin.getLogger().warn("Failed to load MySQL driver class.");
+					}
+					
+					String jdbcUrl = String.format("jdbc:mysql://%s/%s%s",
+							config.getAddress(),
+							config.getDatabase(),
+							config.getProperties());
+					
+					hikariConfig.setJdbcUrl(jdbcUrl);
+					hikariConfig.setDriverClassName("com.mysql.cj.jdbc.Driver");
+					
+				}
+				
+				case "postgresql" -> {
+					
+					try {
+						Class.forName("org.postgresql.Driver");
+					} catch (ClassNotFoundException handled) {
+						plugin.getLogger().warn("Failed to load PostgreSQL driver class.");
+					}
+					
+					String jdbcUrl = String.format("jdbc:postgresql://%s/%s%s",
+							config.getAddress(),
+							config.getDatabase(),
+							config.getProperties());
+					
+					hikariConfig.setJdbcUrl(jdbcUrl);
+					hikariConfig.setDriverClassName("org.postgresql.Driver");
+					
+				}
+				
+				default -> throw new SQLException("Invalid database driver specified: " + driver);
+				
+			}
+			
+			// Set connection credentials
+			hikariConfig.setUsername(config.getUsername());
+			hikariConfig.setPassword(config.getPassword());
+			
+			// Configure HikariCP pool settings
+			DatabaseConfig.PoolConfig poolConfig = config.getPool();
+			if (poolConfig != null) {
+				hikariConfig.setMaximumPoolSize(poolConfig.getMaximum_pool_size());
+				hikariConfig.setMinimumIdle(poolConfig.getMinimum_idle());
+				hikariConfig.setMaxLifetime(poolConfig.getMax_lifetime());
+				hikariConfig.setConnectionTimeout(poolConfig.getConnection_timeout());
+				hikariConfig.setIdleTimeout(poolConfig.getIdle_timeout());
+			} else {
+				// Default values if pool config is not specified
+				hikariConfig.setMaximumPoolSize(10);
+				hikariConfig.setMinimumIdle(5);
+				hikariConfig.setMaxLifetime(1800000); // 30 minutes
+				hikariConfig.setConnectionTimeout(30000); // 30 seconds
+				hikariConfig.setIdleTimeout(600000); // 10 minutes
+			}
+			
+			// Additional HikariCP optimizations
+			hikariConfig.setPoolName("VelocityAuth-HikariPool");
+			hikariConfig.addDataSourceProperty("cachePrepStmts", "true");
+			hikariConfig.addDataSourceProperty("prepStmtCacheSize", "250");
+			hikariConfig.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
+			hikariConfig.addDataSourceProperty("useServerPrepStmts", "true");
+			
+			// Create HikariCP DataSource
+			this.hikariDataSource = new HikariDataSource(hikariConfig);
+			
+			// Wrap HikariDataSource in ORMLite's DataSourceConnectionSource
+			return new DataSourceConnectionSource(hikariDataSource, hikariConfig.getJdbcUrl());
+			
 		}
 		
 	}
@@ -236,6 +278,10 @@ public class DatabaseManager {
 			} catch (Exception e) {
 				plugin.getLogger().error("Failed to close database connection:", e);
 			}
+		}
+		
+		if (this.hikariDataSource != null && !this.hikariDataSource.isClosed()) {
+			this.hikariDataSource.close();
 		}
 		
 		dbExecutor.close();

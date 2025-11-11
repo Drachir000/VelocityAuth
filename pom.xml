@@ -154,6 +154,13 @@
 			<version>3.50.3.0</version>
 		</dependency>
 		
+		<!-- HikariCP Connection Pool -->
+		<dependency>
+			<groupId>com.zaxxer</groupId>
+			<artifactId>HikariCP</artifactId>
+			<version>7.0.2</version>
+		</dependency>
+		
 		<!--
 			Utils
 		 -->
@@ -240,6 +247,11 @@
 						<relocation>
 							<pattern>com.j256.ormlite</pattern>
 							<shadedPattern>${lib.package}.ormlite</shadedPattern>
+						</relocation>
+						
+						<relocation>
+							<pattern>com.zaxxer.hikari</pattern>
+							<shadedPattern>${lib.package}.hikari</shadedPattern>
 						</relocation>
 						
 						<relocation>
