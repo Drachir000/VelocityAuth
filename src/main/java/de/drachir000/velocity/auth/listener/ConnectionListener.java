@@ -8,6 +8,11 @@ import com.velocitypowered.api.proxy.server.RegisteredServer;
 import de.drachir000.velocity.auth.VelocityAuthPlugin;
 import de.drachir000.velocity.auth.config.MainConfig;
 import de.drachir000.velocity.auth.data.DatabaseManager;
+import de.drachir000.velocity.auth.data.PlayerAccount;
+
+import javax.annotation.Nullable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 
 public class ConnectionListener {
 	
@@ -44,8 +49,39 @@ public class ConnectionListener {
 			targetServer = event.getOriginalServer();
 		}
 		
-		// TODO Whitelist logic
+		PlayerAccount account;
+		try {
+			account = databaseManager.getAccount(player.getUniqueId()).get();
+		} catch (InterruptedException | ExecutionException | CancellationException e) {
+			plugin.getLogger().error("Failed to get account for player {} ({}):", player.getUsername(), player.getUniqueId(), e);
+			event.setResult(ServerPreConnectEvent.ServerResult.denied());
+			return;
+		}
 		
+		boolean allowed = account != null || config.isServerPublic(targetServer.getServerInfo().getName());
+		
+		if (!allowed) {
+			
+			RegisteredServer authServer = getAuthServer();
+			
+			if (authServer != null) {
+				event.setResult(ServerPreConnectEvent.ServerResult.allowed(authServer));
+			} else {
+				event.setResult(ServerPreConnectEvent.ServerResult.denied());
+			}
+			
+		}
+		
+	}
+	
+	/**
+	 * Retrieves the authentication server as a registered server if it is configured and available.
+	 *
+	 * @return the registered authentication server if configured and found, or {@code null} otherwise
+	 */
+	private @Nullable RegisteredServer getAuthServer() {
+		if (config.getAuth_server() == null) return null;
+		return proxy.getServer(config.getAuth_server()).orElse(null);
 	}
 	
 }
