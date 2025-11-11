@@ -6,6 +6,7 @@ import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
+import de.drachir000.velocity.auth.data.DatabaseManager;
 import lombok.AccessLevel;
 import lombok.Getter;
 import org.bstats.velocity.Metrics;
@@ -32,6 +33,7 @@ public class VelocityAuthPlugin {
 	private final Metrics.Factory metricsFactory;
 	
 	private Metrics metrics;
+	private DatabaseManager databaseManager;
 	
 	@Inject
 	public VelocityAuthPlugin(ProxyServer server, Logger logger, @DataDirectory Path pluginDirectory, Metrics.Factory metricsFactory) {
@@ -51,6 +53,19 @@ public class VelocityAuthPlugin {
 		
 		logger.info("Initializing VelocityAuth...");
 		
+		logger.info("Connecting to database...");
+		try {
+			
+			this.databaseManager = new DatabaseManager(this);
+			this.databaseManager.connect();
+			
+			logger.info("Successfully connected to database!");
+			
+		} catch (Exception e) {
+			logger.error("Failed to connect to database!", e);
+			return;
+		}
+		
 		logger.info("Registering bStats metrics...");
 		this.metrics = registerBStats();
 		
@@ -65,6 +80,12 @@ public class VelocityAuthPlugin {
 		if (metrics != null) {
 			metrics.shutdown();
 			metrics = null;
+		}
+		
+		logger.info("Closing database connection...");
+		if (this.databaseManager != null) {
+			this.databaseManager.close();
+			logger.info("Database connection closed.");
 		}
 		
 	}

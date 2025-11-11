@@ -154,6 +154,13 @@
 			<version>3.50.3.0</version>
 		</dependency>
 		
+		<!-- HikariCP Connection Pool -->
+		<dependency>
+			<groupId>com.zaxxer</groupId>
+			<artifactId>HikariCP</artifactId>
+			<version>7.0.2</version>
+		</dependency>
+		
 		<!--
 			Utils
 		 -->
@@ -243,18 +250,8 @@
 						</relocation>
 						
 						<relocation>
-							<pattern>com.mysql</pattern>
-							<shadedPattern>${lib.package}.mysql</shadedPattern>
-						</relocation>
-						
-						<relocation>
-							<pattern>org.postgresql</pattern>
-							<shadedPattern>${lib.package}.postgresql</shadedPattern>
-						</relocation>
-						
-						<relocation>
-							<pattern>org.sqlite</pattern>
-							<shadedPattern>${lib.package}.sqlite</shadedPattern>
+							<pattern>com.zaxxer.hikari</pattern>
+							<shadedPattern>${lib.package}.hikari</shadedPattern>
 						</relocation>
 						
 						<relocation>
