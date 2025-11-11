@@ -33,7 +33,7 @@ public class DatabaseConfig {
 	@Getter
 	private int keep_alive_time;
 	@Getter
-	private int que_size;
+	private int queue_size;
 	@Getter
 	private String sqlite_file;
 	

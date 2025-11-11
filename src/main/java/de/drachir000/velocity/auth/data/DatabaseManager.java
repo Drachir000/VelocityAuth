@@ -75,7 +75,7 @@ public class DatabaseManager {
 					config.getCore_threads(), // core pool size
 					config.getMax_threads(), // maximum pool size
 					config.getKeep_alive_time(), TimeUnit.SECONDS, // keep-alive time
-					new LinkedBlockingQueue<>(config.getQue_size()), // bounded queue
+					new LinkedBlockingQueue<>(config.getQueue_size()), // bounded queue
 					new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build(),
 					new ThreadPoolExecutor.CallerRunsPolicy() // backpressure policy
 			);
@@ -303,7 +303,9 @@ public class DatabaseManager {
 			this.hikariDataSource.close();
 		}
 		
-		dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling.
+		if (this.dbExecutor != null && !this.dbExecutor.isShutdown()) {
+			dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling. I am using Java 21 (21 > 19).
+		}
 		
 	}
 	
