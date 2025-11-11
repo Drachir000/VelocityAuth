@@ -38,14 +38,7 @@ public class DatabaseManager {
 	private ConnectionSource connectionSource;
 	private HikariDataSource hikariDataSource;
 	
-	private final ExecutorService dbExecutor = new ThreadPoolExecutor(
-			4, // core pool size
-			Math.max(4, Runtime.getRuntime().availableProcessors() * 2), // maximum pool size
-			60L, TimeUnit.SECONDS, // keep-alive time
-			new LinkedBlockingQueue<>(100), // bounded queue
-			new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build(),
-			new ThreadPoolExecutor.CallerRunsPolicy() // backpressure policy
-	);
+	private ExecutorService dbExecutor;
 	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
@@ -60,8 +53,10 @@ public class DatabaseManager {
 	private static final String ACCOUNTS_BANNED_UNTIL = "bannedUntil";
 	
 	public DatabaseManager(VelocityAuthPlugin plugin) {
+		
 		this.plugin = plugin;
 		this.configPath = plugin.getPluginDirectory().resolve("database.yml");
+		
 	}
 	
 	/**
@@ -72,12 +67,30 @@ public class DatabaseManager {
 	 */
 	public void connect() throws Exception {
 		
-		this.config = loadConfig();
-		this.connectionSource = buildConnectionSource();
-		
-		setupTables();
+		try {
+			
+			this.config = loadConfig();
+			
+			this.dbExecutor = new ThreadPoolExecutor(
+					config.getCore_threads(), // core pool size
+					config.getMax_threads(), // maximum pool size
+					config.getKeep_alive_time(), TimeUnit.SECONDS, // keep-alive time
+					new LinkedBlockingQueue<>(config.getQue_size()), // bounded queue
+					new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build(),
+					new ThreadPoolExecutor.CallerRunsPolicy() // backpressure policy
+			);
+			
+			this.connectionSource = buildConnectionSource();
+			
+			setupTables();
+			
+		} catch (Exception e) {
+			close();
+			throw e;
+		}
 		
 		if (this.connectionSource == null || this.accountDao == null) {
+			close();
 			throw new NullPointerException("Failed to initialize database connection!");
 		}
 		
@@ -290,7 +303,7 @@ public class DatabaseManager {
 			this.hikariDataSource.close();
 		}
 		
-		dbExecutor.close();
+		dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling.
 		
 	}
 	
