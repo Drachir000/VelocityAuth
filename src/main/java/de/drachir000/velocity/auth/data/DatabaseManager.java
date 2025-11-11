@@ -1,5 +1,6 @@
 package de.drachir000.velocity.auth.data;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.j256.ormlite.dao.Dao;
 import com.j256.ormlite.dao.DaoManager;
 import com.j256.ormlite.jdbc.DataSourceConnectionSource;
@@ -23,9 +24,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -39,7 +38,7 @@ public class DatabaseManager {
 	private ConnectionSource connectionSource;
 	private HikariDataSource hikariDataSource;
 	
-	private final ExecutorService dbExecutor = Executors.newFixedThreadPool(4);
+	private ExecutorService dbExecutor;
 	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
@@ -54,8 +53,10 @@ public class DatabaseManager {
 	private static final String ACCOUNTS_BANNED_UNTIL = "bannedUntil";
 	
 	public DatabaseManager(VelocityAuthPlugin plugin) {
+		
 		this.plugin = plugin;
 		this.configPath = plugin.getPluginDirectory().resolve("database.yml");
+		
 	}
 	
 	/**
@@ -66,12 +67,30 @@ public class DatabaseManager {
 	 */
 	public void connect() throws Exception {
 		
-		this.config = loadConfig();
-		this.connectionSource = buildConnectionSource();
-		
-		setupTables();
+		try {
+			
+			this.config = loadConfig();
+			
+			this.dbExecutor = new ThreadPoolExecutor(
+					config.getCore_threads(), // core pool size
+					config.getMax_threads(), // maximum pool size
+					config.getKeep_alive_time(), TimeUnit.SECONDS, // keep-alive time
+					new LinkedBlockingQueue<>(config.getQueue_size()), // bounded queue
+					new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build(),
+					new ThreadPoolExecutor.CallerRunsPolicy() // backpressure policy
+			);
+			
+			this.connectionSource = buildConnectionSource();
+			
+			setupTables();
+			
+		} catch (Exception e) {
+			close();
+			throw e;
+		}
 		
 		if (this.connectionSource == null || this.accountDao == null) {
+			close();
 			throw new NullPointerException("Failed to initialize database connection!");
 		}
 		
@@ -284,7 +303,9 @@ public class DatabaseManager {
 			this.hikariDataSource.close();
 		}
 		
-		dbExecutor.close();
+		if (this.dbExecutor != null && !this.dbExecutor.isShutdown()) {
+			dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling. I am using Java 21 (21 > 19).
+		}
 		
 	}
 	

@@ -27,6 +27,14 @@ public class DatabaseConfig {
 	private String password;
 	private String properties;
 	@Getter
+	private int core_threads;
+	@Getter
+	private int max_threads;
+	@Getter
+	private int keep_alive_time;
+	@Getter
+	private int queue_size;
+	@Getter
 	private String sqlite_file;
 	
 	@Getter
