@@ -323,7 +323,7 @@ public class DatabaseManager {
 			String mcName = account.getMcName();
 			
 			if (!mcName.equals(username)) {
-			
+				updateMcName(account, username);
 			}
 			
 		}).schedule();
