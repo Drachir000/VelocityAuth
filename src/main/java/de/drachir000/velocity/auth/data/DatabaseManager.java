@@ -57,7 +57,7 @@ public class DatabaseManager {
 	 * This prevents the database being hit on every server switch.
 	 */
 	private final Map<UUID, PlayerAccount> accountCache = new ConcurrentHashMap<>();
-	private final Map<UUID, PlayerAccount> originalAccountStates = new ConcurrentHashMap<>();
+	private final Map<UUID, Integer> originalAccountStates = new ConcurrentHashMap<>();
 	
 	// Column names
 	private static final String ACCOUNTS_UUID = "uuid";
@@ -454,7 +454,7 @@ public class DatabaseManager {
 	 */
 	private void addAccountToCache(UUID uuid, PlayerAccount account) {
 		this.accountCache.put(uuid, account);
-		this.originalAccountStates.put(uuid, account);
+		this.originalAccountStates.put(uuid, account.hashCode());
 	}
 	
 	/**
@@ -476,7 +476,7 @@ public class DatabaseManager {
 	 */
 	private PlayerAccount removeAccountFromCache(UUID uuid) {
 		
-		if (this.accountCache.containsKey(uuid) && !this.accountCache.get(uuid).equals(originalAccountStates.get(uuid))) {
+		if (this.accountCache.containsKey(uuid) && this.accountCache.get(uuid).hashCode() != originalAccountStates.get(uuid)) {
 			saveAccount(this.accountCache.get(uuid));
 		}
 		
@@ -686,15 +686,10 @@ public class DatabaseManager {
 		return CompletableFuture.runAsync(() -> {
 			try {
 				
-				if (accountCache.containsKey(account.getUuid()) && !accountCache.containsValue(account)) {
-					accountCache.put(account.getUuid(), account);
-				}
-				
 				accountDao.createOrUpdate(account);
 				
-				if (!account.equals(originalAccountStates.get(account.getUuid()))) {
-					originalAccountStates.put(account.getUuid(), account);
-				}
+				accountCache.put(account.getUuid(), account);
+				originalAccountStates.put(account.getUuid(), account.hashCode());
 				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to save account:", e);
