@@ -8,6 +8,7 @@ import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import de.drachir000.velocity.auth.config.MainConfig;
 import de.drachir000.velocity.auth.data.DatabaseManager;
+import de.drachir000.velocity.auth.listener.ConnectionListener;
 import lombok.AccessLevel;
 import lombok.Getter;
 import org.bstats.velocity.Metrics;
@@ -81,6 +82,10 @@ public class VelocityAuthPlugin {
 			logger.error("Failed to connect to database!", e);
 			throw new RuntimeException("Database connection failed", e);
 		}
+		
+		logger.info("Registering connection listener...");
+		new ConnectionListener();
+		logger.info("Connection listener registered.");
 		
 		logger.info("Registering bStats metrics...");
 		this.metrics = registerBStats();
