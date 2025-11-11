@@ -170,6 +170,7 @@
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
 			<version>1.18.38</version>
+			<scope>provided</scope>
 		</dependency>
 	
 	</dependencies>
@@ -210,9 +211,19 @@
 				<version>3.14.0</version>
 				
 				<configuration>
+					
 					<source>${maven.compiler.source}</source>
 					<target>${maven.compiler.target}</target>
 					<release>${maven.compiler.target}</release>
+					
+					<annotationProcessorPaths>
+						<path>
+							<groupId>org.projectlombok</groupId>
+							<artifactId>lombok</artifactId>
+							<version>1.18.38</version>
+						</path>
+					</annotationProcessorPaths>
+				
 				</configuration>
 			
 			</plugin>
@@ -252,11 +263,6 @@
 						<relocation>
 							<pattern>com.zaxxer.hikari</pattern>
 							<shadedPattern>${lib.package}.hikari</shadedPattern>
-						</relocation>
-						
-						<relocation>
-							<pattern>lombok</pattern>
-							<shadedPattern>${lib.package}.lombok</shadedPattern>
 						</relocation>
 					
 					</relocations>

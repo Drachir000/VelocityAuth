@@ -69,6 +69,8 @@ public class VelocityAuthPlugin {
 		logger.info("Registering bStats metrics...");
 		this.metrics = registerBStats();
 		
+		logger.info("VelocityAuth initialized.");
+		
 	}
 	
 	@Subscribe
@@ -87,6 +89,8 @@ public class VelocityAuthPlugin {
 			this.databaseManager.close();
 			logger.info("Database connection closed.");
 		}
+		
+		logger.info("VelocityAuth shutdown.");
 		
 	}
 	
