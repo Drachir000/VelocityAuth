@@ -63,7 +63,7 @@ public class VelocityAuthPlugin {
 			
 		} catch (Exception e) {
 			logger.error("Failed to connect to database!", e);
-			return;
+			throw new RuntimeException("Database connection failed", e);
 		}
 		
 		logger.info("Registering bStats metrics...");

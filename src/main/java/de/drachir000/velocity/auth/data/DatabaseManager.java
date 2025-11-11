@@ -1,5 +1,6 @@
 package de.drachir000.velocity.auth.data;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.j256.ormlite.dao.Dao;
 import com.j256.ormlite.dao.DaoManager;
 import com.j256.ormlite.jdbc.DataSourceConnectionSource;
@@ -39,7 +40,7 @@ public class DatabaseManager {
 	private ConnectionSource connectionSource;
 	private HikariDataSource hikariDataSource;
 	
-	private final ExecutorService dbExecutor = Executors.newFixedThreadPool(4);
+	private final ExecutorService dbExecutor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("velocityauth-db-%d").build());
 	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
