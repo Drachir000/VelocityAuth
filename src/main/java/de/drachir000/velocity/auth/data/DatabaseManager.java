@@ -339,6 +339,23 @@ public class DatabaseManager {
 	 * @param mcName  The new Minecraft name to assign to the provided PlayerAccount.
 	 */
 	private void updateMcName(PlayerAccount account, String mcName) {
+		updateMcName(account, mcName, 0);
+	}
+	
+	/**
+	 * Updates the Minecraft name (mcName) associated with a PlayerAccount.
+	 * Ensures that name conflicts are appropriately resolved and recursively updates
+	 * the previous owner of the conflicting name if necessary.
+	 *
+	 * @param account The PlayerAccount to be updated with the new Minecraft name.
+	 * @param mcName  The new Minecraft name to assign to the provided PlayerAccount.
+	 * @param depth   The current recursion depth. Used for error checking. Should be set to 0 when called from outside this method.
+	 */
+	private void updateMcName(PlayerAccount account, String mcName, int depth) {
+		
+		if (depth > 10) {
+			throw new IllegalStateException("Recursive update depth exceeded! This should be incredibly rare and should be reported to the developer. Aborting update for this player!");
+		}
 		
 		PlayerAccount previousNameHolder = null;
 		try {
@@ -369,7 +386,7 @@ public class DatabaseManager {
 				plugin.getLogger().info("Name conflict: {} is now used by {}. Recursively updating previous owner (UUID: {}) from {} to {}.",
 						mcName, account.getUuid(), previousNameHolder.getUuid(), previousNameHolder.getMcName(), currentNameOfPreviousHolder);
 				
-				updateMcName(previousNameHolder, currentNameOfPreviousHolder);
+				updateMcName(previousNameHolder, currentNameOfPreviousHolder, depth + 1);
 				
 			} else if (currentNameOfPreviousHolder == null) {
 				
@@ -377,7 +394,7 @@ public class DatabaseManager {
 				plugin.getLogger().warn("Could not resolve a name for UUID {}. This account may be deleted. Saving the first 16 characters of their UUID as their Minecraft name.",
 						previousNameHolder.getUuid());
 				
-				updateMcName(previousNameHolder, previousNameHolder.getUuid().toString().substring(0, 16));
+				updateMcName(previousNameHolder, previousNameHolder.getUuid().toString().substring(0, 16), depth + 1);
 				
 			} else if (currentNameOfPreviousHolder.equalsIgnoreCase(mcName)) { // The previous holder still has that name, so the new player ('account') cannot take it. This is an error.
 				
