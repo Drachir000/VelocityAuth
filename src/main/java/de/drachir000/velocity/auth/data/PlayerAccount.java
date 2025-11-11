@@ -15,7 +15,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @ToString
-@EqualsAndHashCode(of = {"uuid", "mcName", "discordId", "email"})
+@EqualsAndHashCode(of = {"uuid", "mcName", "discordId", "email", "dateAccepted", "lastOnline", "bannedUntil"})
 @DatabaseTable(tableName = "velocityauth_accounts") // Default name overwritten with config value by DatabaseManager
 public class PlayerAccount {
 	
