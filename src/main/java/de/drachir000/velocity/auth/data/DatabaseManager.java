@@ -8,10 +8,16 @@ import com.j256.ormlite.jdbc.JdbcConnectionSource;
 import com.j256.ormlite.support.ConnectionSource;
 import com.j256.ormlite.table.DatabaseTableConfig;
 import com.j256.ormlite.table.TableUtils;
+import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.LoginEvent;
+import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.scheduler.ScheduledTask;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import de.drachir000.velocity.auth.VelocityAuthPlugin;
 import de.drachir000.velocity.auth.config.DatabaseConfig;
+import org.json.JSONObject;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
@@ -20,11 +26,18 @@ import javax.annotation.Nonnull;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -40,8 +53,23 @@ public class DatabaseManager {
 	
 	private ExecutorService dbExecutor;
 	
+	private AtomicInteger mojangRateLimit = new AtomicInteger(0);
+	
+	private void resetMojangRateLimit() {
+		this.mojangRateLimit.set(0);
+	}
+	
+	private final ScheduledTask rateLimitResetTask;
+	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
+	
+	/**
+	 * A thread-safe cache to hold player accounts after they log in.
+	 * This prevents the database being hit on every server switch.
+	 */
+	private final Map<UUID, PlayerAccount> accountCache = new ConcurrentHashMap<>();
+	private final Collection<UUID> noAccounts = new CopyOnWriteArrayList<>();
 	
 	// Column names
 	private static final String ACCOUNTS_UUID = "uuid";
@@ -56,6 +84,8 @@ public class DatabaseManager {
 		
 		this.plugin = plugin;
 		this.configPath = plugin.getPluginDirectory().resolve("database.yml");
+		
+		this.rateLimitResetTask = this.plugin.getServer().getScheduler().buildTask(plugin, this::resetMojangRateLimit).repeat(10, TimeUnit.MINUTES).schedule();
 		
 	}
 	
@@ -94,6 +124,8 @@ public class DatabaseManager {
 			throw new NullPointerException("Failed to initialize database connection!");
 		}
 		
+		plugin.getServer().getEventManager().register(plugin, this);
+		
 	}
 	
 	/**
@@ -109,7 +141,7 @@ public class DatabaseManager {
 			
 			plugin.getLogger().info("Creating default database.yml...");
 			
-			configPath.getParent().toFile().mkdirs();
+			Files.createDirectories(configPath.getParent());
 			
 			try (InputStream in = getClass().getResourceAsStream("/database.yml");
 			     OutputStream out = Files.newOutputStream(configPath)) {
@@ -118,7 +150,6 @@ public class DatabaseManager {
 					throw new IOException("Could not find default database.yml in JAR!");
 				}
 				
-				Files.createDirectories(configPath.getParent());
 				in.transferTo(out);
 				
 			}
@@ -287,11 +318,247 @@ public class DatabaseManager {
 	}
 	
 	/**
+	 * Handles the login event for a player. This method fetches the associated
+	 * {@link PlayerAccount} for the player based on their UUID and loads it into the cache.
+	 * If the player's account is unable to be fetched or does not exist, appropriate actions are
+	 * taken. Additionally, it ensures the stored Minecraft username matches the
+	 * player's current username, updating if necessary.
+	 *
+	 * @param event The login event containing details about the player joining.
+	 */
+	@Subscribe
+	public void onLogin(LoginEvent event) {
+		
+		Player player = event.getPlayer();
+		UUID uuid = player.getUniqueId();
+		
+		PlayerAccount account;
+		try {
+			account = getAccount(uuid).get();
+		} catch (InterruptedException | ExecutionException | CancellationException e) {
+			plugin.getLogger().error("Failed to get account for player {}({}):", player.getUsername(), uuid, e);
+			return;
+		}
+		
+		plugin.getServer().getScheduler().buildTask(plugin, () -> {
+			
+			String username = player.getUsername();
+			String mcName = account.getMcName();
+			
+			if (!mcName.equals(username)) {
+				updateMcName(account, username);
+			}
+			
+		}).schedule();
+		
+	}
+	
+	/**
+	 * Handles the event triggered when a player disconnects from the server.
+	 * This method removes the player's UUID from the cache.
+	 *
+	 * @param event The disconnect event containing the player details, including their UUID.
+	 */
+	@Subscribe
+	public void onDisconnect(DisconnectEvent event) {
+		
+		Player player = event.getPlayer();
+		UUID uuid = player.getUniqueId();
+		
+		noAccounts.remove(uuid);
+		removeAccountFromCache(uuid);
+		
+	}
+	
+	/**
+	 * Updates the Minecraft name (mcName) associated with a PlayerAccount.
+	 * Ensures that name conflicts are appropriately resolved and recursively updates
+	 * the previous owner of the conflicting name if necessary.
+	 *
+	 * @param account The PlayerAccount to be updated with the new Minecraft name.
+	 * @param mcName  The new Minecraft name to assign to the provided PlayerAccount.
+	 */
+	private void updateMcName(PlayerAccount account, String mcName) {
+		updateMcName(account, mcName, 0);
+	}
+	
+	/**
+	 * Updates the Minecraft name (mcName) associated with a PlayerAccount.
+	 * Ensures that name conflicts are appropriately resolved and recursively updates
+	 * the previous owner of the conflicting name if necessary.
+	 *
+	 * @param account The PlayerAccount to be updated with the new Minecraft name.
+	 * @param mcName  The new Minecraft name to assign to the provided PlayerAccount.
+	 * @param depth   The current recursion depth. Used for error checking. Should be set to 0 when called from outside this method.
+	 */
+	private void updateMcName(PlayerAccount account, String mcName, int depth) {
+		
+		if (depth > 10) {
+			throw new IllegalStateException("Recursive update depth exceeded! This should be incredibly rare and should be reported to the developer. Aborting update for this player!");
+		}
+		
+		PlayerAccount previousNameHolder = null;
+		try {
+			previousNameHolder = findAccountByMcName(mcName).get();
+		} catch (InterruptedException | ExecutionException | CancellationException e) {
+			plugin.getLogger().warn("Failed to get account for player {}:", mcName, e);
+		}
+		
+		if (previousNameHolder != null && !previousNameHolder.getUuid().equals(account.getUuid())) {
+			
+			String currentNameOfPreviousHolder = null;
+			
+			try {
+				
+				plugin.getLogger().info("Checking current name for UUID {} (previous owner of name {}).",
+						previousNameHolder.getUuid(), mcName);
+				
+				currentNameOfPreviousHolder = fetchCurrentNameFromMojang(previousNameHolder.getUuid()).get();
+				
+			} catch (InterruptedException | ExecutionException | CancellationException e) {
+				plugin.getLogger().error("Failed to fetch current name for UUID {}. Aborting recursive update for this player.",
+						previousNameHolder.getUuid(), e);
+				return;
+			}
+			
+			if (currentNameOfPreviousHolder != null && !currentNameOfPreviousHolder.equalsIgnoreCase(previousNameHolder.getMcName())) {
+				
+				plugin.getLogger().info("Name conflict: {} is now used by {}. Recursively updating previous owner (UUID: {}) from {} to {}.",
+						mcName, account.getUuid(), previousNameHolder.getUuid(), previousNameHolder.getMcName(), currentNameOfPreviousHolder);
+				
+				updateMcName(previousNameHolder, currentNameOfPreviousHolder, depth + 1);
+				
+			} else if (currentNameOfPreviousHolder == null) {
+				
+				// Mojang API failed to find a name (e.g., 204 No Content)
+				plugin.getLogger().warn("Could not resolve a name for UUID {}. This account may be deleted. Saving the first 16 characters of their UUID as their Minecraft name.",
+						previousNameHolder.getUuid());
+				
+				updateMcName(previousNameHolder, previousNameHolder.getUuid().toString().substring(0, 16), depth + 1);
+				
+			} else if (currentNameOfPreviousHolder.equalsIgnoreCase(mcName)) { // The previous holder still has that name, so the new player ('account') cannot take it. This is an error.
+				
+				plugin.getLogger().error("CANNOT update {} to {}. That name is still correctly owned by UUID {} (this should never happen!).",
+						account.getUuid(), mcName, previousNameHolder.getUuid());
+				
+				return;
+				
+			}
+			
+		}
+		
+		account.setMcName(mcName);
+		
+	}
+	
+	/**
+	 * Fetches the current Minecraft username for a given UUID from Mojang's API.
+	 * This method is async
+	 *
+	 * @param uuid The player's UUID.
+	 * @return A CompletableFuture holding the current username, or null if not found/error.
+	 */
+	private CompletableFuture<String> fetchCurrentNameFromMojang(UUID uuid) {
+		return CompletableFuture.supplyAsync(() -> {
+			
+			if (mojangRateLimit.incrementAndGet() >= 600) {
+				plugin.getLogger().warn("Mojang API rate limit exceeded. Aborting fetch for UUID {}.", uuid);
+				return null;
+			}
+			
+			// Mojang's API requires the UUID without dashes
+			String urlString = "https://sessionserver.mojang.com/session/minecraft/profile/"
+					+ uuid.toString().replace("-", "");
+			
+			try {
+				
+				URL url = new URL(urlString);
+				
+				HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+				connection.setRequestMethod("GET");
+				connection.setConnectTimeout(5000); // 5 seconds
+				connection.setReadTimeout(5000);
+				
+				int responseCode = connection.getResponseCode();
+				
+				if (responseCode == HttpURLConnection.HTTP_OK) { // 200
+					
+					JSONObject json = new JSONObject(new String(connection.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+					
+					if (json.has("name")) {
+						return json.getString("name");
+					} else {
+						plugin.getLogger().warn("Mojang API response for {} did not contain 'name' field.", uuid);
+						return null;
+					}
+					
+				} else if (responseCode == 204) { // 204 No Content
+					plugin.getLogger().warn("Mojang API returned 204 (No Content) for UUID {}. No profile associated?", uuid);
+					return null;
+				} else {
+					plugin.getLogger().error("Mojang API request for {} failed with code: {}", uuid, responseCode);
+					return null;
+				}
+				
+			} catch (Exception e) {
+				plugin.getLogger().error("Failed to fetch or parse profile for UUID {}:", uuid, e);
+				return null;
+			}
+			
+		});
+	}
+	
+	/**
+	 * Synchronously adds a loaded PlayerAccount to the cache.
+	 *
+	 * @param uuid    The player's UUID.
+	 * @param account The PlayerAccount object.
+	 */
+	private void addAccountToCache(UUID uuid, @Nonnull PlayerAccount account) {
+		this.noAccounts.remove(uuid);
+		this.accountCache.put(uuid, account);
+	}
+	
+	/**
+	 * Synchronously retrieves a PlayerAccount from the cache.
+	 *
+	 * @param uuid The player's UUID.
+	 * @return The cached PlayerAccount, or null if not in the cache.
+	 */
+	private PlayerAccount getAccountFromCache(UUID uuid) {
+		return this.accountCache.get(uuid);
+	}
+	
+	/**
+	 * Synchronously removes a PlayerAccount from the cache (e.g., on disconnect).
+	 * Saves the PlayerAccount if it has changed since the last save.
+	 *
+	 * @param uuid The player's UUID.
+	 * @return The PlayerAccount that was removed, or null.
+	 */
+	private PlayerAccount removeAccountFromCache(UUID uuid) {
+		
+		if (this.accountCache.containsKey(uuid) && this.accountCache.get(uuid).isModified()) {
+			saveAccount(this.accountCache.get(uuid));
+		}
+		
+		return this.accountCache.remove(uuid);
+		
+	}
+	
+	/**
 	 * Closes the database connection source.
 	 */
 	public void close() {
 		
+		plugin.getLogger().info("Unregistering event listener for database connection close...");
+		plugin.getServer().getEventManager().unregisterListener(plugin, this);
+		
+		plugin.getLogger().info("Saving cached accounts to database (this may take a moment)...");
+		new ArrayList<>(accountCache.keySet()).forEach(this::removeAccountFromCache);
+		
 		if (this.connectionSource != null) {
+			plugin.getLogger().info("Closing database connection...");
 			try {
 				this.connectionSource.close();
 			} catch (Exception e) {
@@ -300,11 +567,18 @@ public class DatabaseManager {
 		}
 		
 		if (this.hikariDataSource != null && !this.hikariDataSource.isClosed()) {
+			plugin.getLogger().info("Closing database pool...");
 			this.hikariDataSource.close();
 		}
 		
 		if (this.dbExecutor != null && !this.dbExecutor.isShutdown()) {
+			plugin.getLogger().info("Closing database executor...");
 			dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling. I am using Java 21 (21 > 19).
+		}
+		
+		if (rateLimitResetTask != null) {
+			plugin.getLogger().info("Cancelling rate limit reset task...");
+			rateLimitResetTask.cancel();
 		}
 		
 	}
@@ -314,18 +588,40 @@ public class DatabaseManager {
 	
 	/**
 	 * Fetches a player account by their UUID.
+	 * Uses a cache to speed up lookups.
 	 *
 	 * @param uuid The player's UUID.
 	 * @return A {@link CompletableFuture} containing the PlayerAccount, or null if not found.
 	 */
 	public CompletableFuture<PlayerAccount> getAccount(@Nonnull UUID uuid) {
 		return CompletableFuture.supplyAsync(() -> {
+			
+			if (noAccounts.contains(uuid)) {
+				return null;
+			}
+			
+			if (accountCache.containsKey(uuid)) {
+				return getAccountFromCache(uuid);
+			}
+			
 			try {
-				return accountDao.queryForId(uuid);
+				
+				PlayerAccount account = accountDao.queryForId(uuid);
+				
+				if (account != null) {
+					addAccountToCache(uuid, account);
+					account.setModified(false);
+				} else {
+					noAccounts.add(uuid);
+				}
+				
+				return account;
+				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by UUID:", e);
 				return null;
 			}
+			
 		}, dbExecutor);
 	}
 	
@@ -338,8 +634,32 @@ public class DatabaseManager {
 	public CompletableFuture<PlayerAccount> findAccountByMcName(@Nonnull String mcName) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
+				
 				// OrmLite query builder for "WHERE mcName = ?"
-				return accountDao.queryBuilder().where().eq(ACCOUNTS_MC_NAME, mcName).queryForFirst();
+				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_MC_NAME, mcName).queryForFirst();
+				
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getMcName().equalsIgnoreCase(mcName)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
+				}
+				
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
+				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Minecraft Name:", e);
 				return null;
@@ -356,8 +676,32 @@ public class DatabaseManager {
 	public CompletableFuture<PlayerAccount> findAccountByDiscordId(@Nonnull String discordId) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
+				
 				// OrmLite query builder for "WHERE discordId = ?"
-				return accountDao.queryBuilder().where().eq(ACCOUNTS_DISCORD_ID, discordId).queryForFirst();
+				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_DISCORD_ID, discordId).queryForFirst();
+				
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getDiscordId().equalsIgnoreCase(discordId)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
+				}
+				
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
+				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by Discord ID:", e);
 				return null;
@@ -374,8 +718,33 @@ public class DatabaseManager {
 	public CompletableFuture<PlayerAccount> findAccountByEmail(@Nonnull String email) {
 		return CompletableFuture.supplyAsync(() -> {
 			try {
+				
 				// OrmLite query builder for "WHERE email = ?"
-				return accountDao.queryBuilder().where().eq(ACCOUNTS_EMAIL, email).queryForFirst();
+				PlayerAccount account = accountDao.queryBuilder().where().eq(ACCOUNTS_EMAIL, email).queryForFirst();
+				
+				if (account == null) {
+					
+					for (PlayerAccount cachedAccount : accountCache.values()) {
+						if (cachedAccount.getEmail().equalsIgnoreCase(email)) {
+							return cachedAccount;
+						}
+					}
+					
+					return null;
+					
+				}
+				
+				if (accountCache.containsKey(account.getUuid())) {
+					return getAccountFromCache(account.getUuid());
+				} else {
+					
+					addAccountToCache(account.getUuid(), account);
+					
+					return account;
+					
+				}
+				
+				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to query account by email:", e);
 				return null;
@@ -392,7 +761,14 @@ public class DatabaseManager {
 	public CompletableFuture<Void> saveAccount(@Nonnull PlayerAccount account) {
 		return CompletableFuture.runAsync(() -> {
 			try {
+				
+				noAccounts.remove(account.getUuid());
+				
 				accountDao.createOrUpdate(account);
+				
+				accountCache.put(account.getUuid(), account);
+				account.setModified(false);
+				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to save account:", e);
 			}
