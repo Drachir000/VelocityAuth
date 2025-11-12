@@ -9,6 +9,7 @@ import com.j256.ormlite.support.ConnectionSource;
 import com.j256.ormlite.table.DatabaseTableConfig;
 import com.j256.ormlite.table.TableUtils;
 import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.zaxxer.hikari.HikariConfig;
@@ -31,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
@@ -58,6 +60,7 @@ public class DatabaseManager {
 	 */
 	private final Map<UUID, PlayerAccount> accountCache = new ConcurrentHashMap<>();
 	private final Map<UUID, Integer> originalAccountStates = new ConcurrentHashMap<>();
+	private final Collection<UUID> noAccounts = new CopyOnWriteArrayList<>();
 	
 	// Column names
 	private static final String ACCOUNTS_UUID = "uuid";
@@ -303,6 +306,15 @@ public class DatabaseManager {
 		return tableName;
 	}
 	
+	/**
+	 * Handles the login event for a player. This method fetches the associated
+	 * {@link PlayerAccount} for the player based on their UUID and loads it into the cache.
+	 * If the player's account is unable to be fetched or does not exist, appropriate actions are
+	 * taken. Additionally, it ensures the stored Minecraft username matches the
+	 * player's current username, updating if necessary.
+	 *
+	 * @param event The login event containing details about the player joining.
+	 */
 	@Subscribe
 	public void onLogin(LoginEvent event) {
 		
@@ -317,6 +329,11 @@ public class DatabaseManager {
 			return;
 		}
 		
+		if (account == null) {
+			noAccounts.add(uuid);
+			return;
+		}
+		
 		plugin.getServer().getScheduler().buildTask(plugin, () -> {
 			
 			String username = player.getUsername();
@@ -327,6 +344,23 @@ public class DatabaseManager {
 			}
 			
 		}).schedule();
+		
+	}
+	
+	/**
+	 * Handles the event triggered when a player disconnects from the server.
+	 * This method removes the player's UUID from the cache.
+	 *
+	 * @param event The disconnect event containing the player details, including their UUID.
+	 */
+	@Subscribe
+	public void onDisconnect(DisconnectEvent event) {
+		
+		Player player = event.getPlayer();
+		UUID uuid = player.getUniqueId();
+		
+		noAccounts.remove(uuid);
+		removeAccountFromCache(uuid);
 		
 	}
 	
@@ -470,6 +504,7 @@ public class DatabaseManager {
 	 * @param account The PlayerAccount object.
 	 */
 	private void addAccountToCache(UUID uuid, PlayerAccount account) {
+		this.noAccounts.remove(uuid);
 		this.accountCache.put(uuid, account);
 		this.originalAccountStates.put(uuid, account.hashCode());
 	}
@@ -546,6 +581,10 @@ public class DatabaseManager {
 	 */
 	public CompletableFuture<PlayerAccount> getAccount(@Nonnull UUID uuid) {
 		return CompletableFuture.supplyAsync(() -> {
+			
+			if (noAccounts.contains(uuid)) {
+				return null;
+			}
 			
 			if (accountCache.containsKey(uuid)) {
 				return getAccountFromCache(uuid);
@@ -702,6 +741,8 @@ public class DatabaseManager {
 	public CompletableFuture<Void> saveAccount(@Nonnull PlayerAccount account) {
 		return CompletableFuture.runAsync(() -> {
 			try {
+				
+				noAccounts.remove(account.getUuid());
 				
 				accountDao.createOrUpdate(account);
 				
