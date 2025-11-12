@@ -84,7 +84,7 @@ public class VelocityAuthPlugin {
 		}
 		
 		logger.info("Registering connection listener...");
-		new ConnectionListener();
+		ConnectionListener.initialize();
 		logger.info("Connection listener registered.");
 		
 		logger.info("Registering bStats metrics...");

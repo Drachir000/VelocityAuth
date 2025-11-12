@@ -39,6 +39,10 @@ public class ConnectionListener {
 		
 	}
 	
+	public static void initialize() {
+		new ConnectionListener();
+	}
+	
 	@Subscribe(priority = -1)
 	public void onServerPreConnect(ServerPreConnectEvent event) {
 		
