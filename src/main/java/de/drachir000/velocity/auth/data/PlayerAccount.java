@@ -17,6 +17,8 @@ public class PlayerAccount {
 	
 	@Setter(AccessLevel.PACKAGE)
 	private boolean modified = true;
+	// defaults to true, because manually created instances aren't saved to the database yet
+	// when using DatabaseManager.getAccount() or DatabaseManager.saveAccount() it is automatically set to false
 	
 	/**
 	 * The player's unique Minecraft UUID. This is the Primary Key.

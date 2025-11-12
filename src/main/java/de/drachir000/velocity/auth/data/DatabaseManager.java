@@ -37,6 +37,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages the connection to the database, configuration loading,
@@ -52,10 +53,10 @@ public class DatabaseManager {
 	
 	private ExecutorService dbExecutor;
 	
-	private int mojangRateLimit = 0;
+	private AtomicInteger mojangRateLimit = new AtomicInteger(0);
 	
 	private void resetMojangRateLimit() {
-		this.mojangRateLimit = 0;
+		this.mojangRateLimit.set(0);
 	}
 	
 	private final ScheduledTask rateLimitResetTask;
@@ -339,11 +340,6 @@ public class DatabaseManager {
 			return;
 		}
 		
-		if (account == null) {
-			noAccounts.add(uuid);
-			return;
-		}
-		
 		plugin.getServer().getScheduler().buildTask(plugin, () -> {
 			
 			String username = player.getUsername();
@@ -465,7 +461,7 @@ public class DatabaseManager {
 	private CompletableFuture<String> fetchCurrentNameFromMojang(UUID uuid) {
 		return CompletableFuture.supplyAsync(() -> {
 			
-			if (mojangRateLimit >= 600) {
+			if (mojangRateLimit.incrementAndGet() >= 600) {
 				plugin.getLogger().warn("Mojang API rate limit exceeded. Aborting fetch for UUID {}.", uuid);
 				return null;
 			}
@@ -611,8 +607,13 @@ public class DatabaseManager {
 			try {
 				
 				PlayerAccount account = accountDao.queryForId(uuid);
-				addAccountToCache(uuid, account);
-				account.setModified(false);
+				
+				if (account != null) {
+					addAccountToCache(uuid, account);
+					account.setModified(false);
+				} else {
+					noAccounts.add(uuid);
+				}
 				
 				return account;
 				
