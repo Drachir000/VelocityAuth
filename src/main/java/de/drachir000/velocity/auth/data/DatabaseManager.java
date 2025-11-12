@@ -12,6 +12,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.proxy.Player;
+import com.velocitypowered.api.scheduler.ScheduledTask;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import de.drachir000.velocity.auth.VelocityAuthPlugin;
@@ -51,6 +52,14 @@ public class DatabaseManager {
 	
 	private ExecutorService dbExecutor;
 	
+	private int mojangRateLimit = 0;
+	
+	private void resetMojangRateLimit() {
+		this.mojangRateLimit = 0;
+	}
+	
+	private final ScheduledTask rateLimitResetTask;
+	
 	// DAOs (Data Access Objects)
 	private Dao<PlayerAccount, UUID> accountDao;
 	
@@ -75,6 +84,8 @@ public class DatabaseManager {
 		
 		this.plugin = plugin;
 		this.configPath = plugin.getPluginDirectory().resolve("database.yml");
+		
+		this.rateLimitResetTask = this.plugin.getServer().getScheduler().buildTask(plugin, this::resetMojangRateLimit).repeat(10, TimeUnit.MINUTES).schedule();
 		
 	}
 	
@@ -455,6 +466,11 @@ public class DatabaseManager {
 	private CompletableFuture<String> fetchCurrentNameFromMojang(UUID uuid) {
 		return CompletableFuture.supplyAsync(() -> {
 			
+			if (mojangRateLimit >= 600) {
+				plugin.getLogger().warn("Mojang API rate limit exceeded. Aborting fetch for UUID {}.", uuid);
+				return null;
+			}
+			
 			// Mojang's API requires the UUID without dashes
 			String urlString = "https://sessionserver.mojang.com/session/minecraft/profile/"
 					+ uuid.toString().replace("-", "");
@@ -565,6 +581,11 @@ public class DatabaseManager {
 		if (this.dbExecutor != null && !this.dbExecutor.isShutdown()) {
 			plugin.getLogger().info("Closing database executor...");
 			dbExecutor.close(); // Note for Claude Code Review: this method does exist. This method usually calls shutdown and has it's own InterruptedException handling. I am using Java 21 (21 > 19).
+		}
+		
+		if (rateLimitResetTask != null) {
+			plugin.getLogger().info("Cancelling rate limit reset task...");
+			rateLimitResetTask.cancel();
 		}
 		
 	}
