@@ -68,7 +68,6 @@ public class DatabaseManager {
 	 * This prevents the database being hit on every server switch.
 	 */
 	private final Map<UUID, PlayerAccount> accountCache = new ConcurrentHashMap<>();
-	private final Map<UUID, Integer> originalAccountStates = new ConcurrentHashMap<>();
 	private final Collection<UUID> noAccounts = new CopyOnWriteArrayList<>();
 	
 	// Column names
@@ -519,10 +518,9 @@ public class DatabaseManager {
 	 * @param uuid    The player's UUID.
 	 * @param account The PlayerAccount object.
 	 */
-	private void addAccountToCache(UUID uuid, PlayerAccount account) {
+	private void addAccountToCache(UUID uuid, @Nonnull PlayerAccount account) {
 		this.noAccounts.remove(uuid);
 		this.accountCache.put(uuid, account);
-		this.originalAccountStates.put(uuid, account.hashCode());
 	}
 	
 	/**
@@ -544,11 +542,10 @@ public class DatabaseManager {
 	 */
 	private PlayerAccount removeAccountFromCache(UUID uuid) {
 		
-		if (this.accountCache.containsKey(uuid) && this.accountCache.get(uuid).hashCode() != originalAccountStates.get(uuid)) {
+		if (this.accountCache.containsKey(uuid) && this.accountCache.get(uuid).isModified()) {
 			saveAccount(this.accountCache.get(uuid));
 		}
 		
-		originalAccountStates.remove(uuid);
 		return this.accountCache.remove(uuid);
 		
 	}
@@ -615,6 +612,7 @@ public class DatabaseManager {
 				
 				PlayerAccount account = accountDao.queryForId(uuid);
 				addAccountToCache(uuid, account);
+				account.setModified(false);
 				
 				return account;
 				
@@ -768,7 +766,7 @@ public class DatabaseManager {
 				accountDao.createOrUpdate(account);
 				
 				accountCache.put(account.getUuid(), account);
-				originalAccountStates.put(account.getUuid(), account.hashCode());
+				account.setModified(false);
 				
 			} catch (SQLException e) {
 				plugin.getLogger().error("Failed to save account:", e);
